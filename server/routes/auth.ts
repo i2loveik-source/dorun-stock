@@ -5,14 +5,38 @@ import bcrypt from "bcrypt";
 
 const router = Router();
 
-// 직접 로그인 (두런 코인/허브 계정)
+// 공통: 유저 정보 + 역할 조회 헬퍼
+async function fetchUserInfo(condition: string, value: string) {
+  return sql`
+    SELECT u.id, u.username, u.password, u.full_name, u.school_id,
+           s.name as org_name,
+           uo.role as org_role, uo.organization_id,
+           cr.role as coin_role
+    FROM public.users u
+    LEFT JOIN public.schools s ON u.school_id = s.id
+    LEFT JOIN public.user_organizations uo
+      ON uo.user_id::text = u.id::text
+      AND uo.is_approved = true
+      AND uo.organization_id = u.school_id
+    LEFT JOIN economy.coin_roles cr ON cr.user_id::text = u.id::text
+    WHERE u.username = ${value}
+    LIMIT 1
+  `;
+}
+
+function resolveRole(u: any): string {
+  if (u.coin_role === "platform_admin") return "platform_admin";
+  if (u.org_role === "admin") return "관리자";
+  return u.org_role || "member";
+}
+
+// 직접 로그인 (두런 허브/코인 계정)
 // POST /auth/login
 router.post("/auth/login", async (req: Request, res: Response) => {
   try {
     const { username, password } = req.body;
     if (!username || !password) return res.status(400).json({ error: "아이디와 비밀번호 필요" });
 
-    // public.users 테이블에서 조회
     const users = await sql`
       SELECT u.id, u.username, u.password, u.full_name, u.school_id,
              s.name as org_name,
@@ -22,7 +46,7 @@ router.post("/auth/login", async (req: Request, res: Response) => {
       LEFT JOIN public.schools s ON u.school_id = s.id
       LEFT JOIN public.user_organizations uo
         ON uo.user_id::text = u.id::text
-        AND uo."isApproved" = true
+        AND uo.is_approved = true
         AND uo.organization_id = u.school_id
       LEFT JOIN economy.coin_roles cr ON cr.user_id::text = u.id::text
       WHERE u.username = ${username}
@@ -34,18 +58,18 @@ router.post("/auth/login", async (req: Request, res: Response) => {
 
     // 비밀번호 확인 (bcrypt 또는 평문)
     let valid = false;
-    if (u.password?.startsWith("$2")) {
-      valid = await bcrypt.compare(password, u.password);
-    } else {
+    try {
+      if (u.password?.startsWith("$2")) {
+        valid = await bcrypt.compare(password, u.password);
+      } else {
+        valid = u.password === password;
+      }
+    } catch {
       valid = u.password === password;
     }
     if (!valid) return res.status(401).json({ error: "아이디 또는 비밀번호가 틀렸습니다" });
 
-    // 역할 결정
-    const role = u.coin_role === "platform_admin" ? "platform_admin"
-      : u.org_role === "admin" ? "관리자"
-      : u.org_role || "member";
-
+    const role = resolveRole(u);
     const token = generateStockToken({
       userId: u.id,
       role,
@@ -69,50 +93,51 @@ router.post("/auth/login", async (req: Request, res: Response) => {
   }
 });
 
-// SSO 로그인 (두런 코인/허브 토큰으로 자동 로그인)
+// SSO 로그인 (두런 코인/허브 토큰)
 // GET /auth/sso?sso_token=...
 router.get("/auth/sso", async (req: Request, res: Response) => {
   try {
     const { sso_token } = req.query as any;
     if (!sso_token) return res.status(400).json({ error: "sso_token 필요" });
 
-    const user = verifySsoToken(sso_token);
-    if (!user) return res.status(401).json({ error: "유효하지 않은 토큰" });
+    const decoded = verifySsoToken(sso_token);
+    if (!decoded) return res.status(401).json({ error: "유효하지 않은 토큰" });
 
-    // 두런 허브 유저 정보 조회
     const users = await sql`
       SELECT u.id, u.username, u.full_name, u.school_id,
              s.name as org_name,
-             uo.role as org_role, uo.organization_id
+             uo.role as org_role, uo.organization_id,
+             cr.role as coin_role
       FROM public.users u
       LEFT JOIN public.schools s ON u.school_id = s.id
       LEFT JOIN public.user_organizations uo
         ON uo.user_id::text = u.id::text
+        AND uo.is_approved = true
         AND uo.organization_id = u.school_id
-        AND uo."isApproved" = true
-      WHERE u.id::text = ${user.userId}
+      LEFT JOIN economy.coin_roles cr ON cr.user_id::text = u.id::text
+      WHERE u.id::text = ${decoded.userId}
       LIMIT 1
     `;
-    if (users.length === 0) return res.status(404).json({ error: "허브 계정 없음" });
+    if (users.length === 0) return res.status(404).json({ error: "계정 없음" });
 
     const u = users[0];
-    const stockToken = generateStockToken({
+    const role = resolveRole(u);
+    const token = generateStockToken({
       userId: u.id,
-      role: u.org_role || "member",
+      role,
       organizationId: u.organization_id || u.school_id,
       username: u.username,
     });
 
-    // URL 토큰 제거 후 응답
     res.json({
-      token: stockToken,
+      token,
       user: {
         id: u.id,
         username: u.username,
         fullName: u.full_name,
         orgName: u.org_name,
         orgId: u.organization_id || u.school_id,
-        role: u.org_role,
+        role,
       },
     });
   } catch (e: any) {
@@ -128,17 +153,24 @@ router.get("/auth/me", requireAuth, async (req: Request, res: Response) => {
     const users = await sql`
       SELECT u.id, u.username, u.full_name, u.school_id,
              s.name as org_name,
-             uo.role as org_role, uo.organization_id
+             uo.role as org_role, uo.organization_id,
+             cr.role as coin_role
       FROM public.users u
       LEFT JOIN public.schools s ON u.school_id = s.id
       LEFT JOIN public.user_organizations uo
         ON uo.user_id::text = u.id::text
-        AND uo."isApproved" = true
+        AND uo.is_approved = true
+        AND uo.organization_id = u.school_id
+      LEFT JOIN economy.coin_roles cr ON cr.user_id::text = u.id::text
       WHERE u.id::text = ${user.userId}
       LIMIT 1
     `;
     if (users.length === 0) return res.status(404).json({ error: "유저 없음" });
-    res.json(users[0]);
+    const u = users[0];
+    res.json({
+      ...u,
+      role: resolveRole(u),
+    });
   } catch (e: any) {
     res.status(500).json({ error: e.message });
   }
