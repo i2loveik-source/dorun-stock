@@ -47,11 +47,20 @@ app.use("/api", dividendRoutes);
 app.use("/api", portfolioRoutes);
 
 // 프로덕션: 클라이언트 정적 파일
+// __dirname = dist/ (tsc 빌드 후), client/dist = ../client/dist
 const clientDist = path.join(__dirname, "../client/dist");
-app.use(express.static(clientDist));
-app.get("/{*path}", (_req, res) => {
-  res.sendFile(path.join(clientDist, "index.html"));
-});
+const fs = require("fs");
+if (fs.existsSync(clientDist)) {
+  app.use(express.static(clientDist));
+  app.get("/{*path}", (_req, res) => {
+    res.sendFile(path.join(clientDist, "index.html"));
+  });
+} else {
+  console.warn("⚠️ client/dist 없음 — 프론트 빌드 필요");
+  app.get("/{*path}", (_req, res) => {
+    res.send("<h1>두런 스탁 서버 실행 중</h1><p>프론트 빌드 대기 중...</p>");
+  });
+}
 
 server.listen(PORT, () => {
   console.log(`📈 두런 스탁 서버 실행 중: http://localhost:${PORT}`);
