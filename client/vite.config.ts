@@ -6,6 +6,7 @@ export default defineConfig({
   root: ".",
   build: {
     outDir: "dist",
+    emptyOutDir: true,
   },
   server: {
     port: 4401,
