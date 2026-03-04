@@ -153,11 +153,11 @@ export default function Market({ onSelect, onLogout }: { onSelect: (id: number) 
               <p className="text-xs text-gray-400">@{user?.username}</p>
               {user?.orgName && <p className="text-xs text-indigo-500 mt-0.5">🏫 {user.orgName}</p>}
             </div>
-            <button onClick={() => { setShowProfile(false); setShowIpo(true); }}
+            <button onClick={(e) => { e.stopPropagation(); setShowProfile(false); setTimeout(() => setShowIpo(true), 50); }}
               className="w-full text-left text-sm py-1.5 px-2 rounded-xl hover:bg-gray-50 text-gray-700">
               🏢 IPO 신청
             </button>
-            <button onClick={() => { setShowProfile(false); onLogout(); }}
+            <button onClick={(e) => { e.stopPropagation(); setShowProfile(false); onLogout(); }}
               className="w-full text-left text-sm py-1.5 px-2 rounded-xl hover:bg-red-50 text-red-500 mt-0.5">
               🚪 로그아웃
             </button>
