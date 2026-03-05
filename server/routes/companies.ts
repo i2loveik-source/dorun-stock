@@ -1,6 +1,6 @@
 import { Router, Request, Response } from "express";
 import { requireAuth } from "../auth.js";
-import { sql } from "../db.js";
+import { sql, pool } from "../db.js";
 import { createCompanyWallet } from "../coinApi.js";
 import { getIo } from "../socket.js";
 import multer from "multer";
@@ -37,43 +37,58 @@ router.get("/companies", requireAuth, async (req: Request, res: Response) => {
     const user = (req as any).user;
     const orgId = parseInt(req.query.orgId as string) || user.organizationId;
 
-    // platform_admin 또는 orgId 없으면 전체 상장 목록
-    const orgFilter = orgId
-      ? sql`WHERE c.organization_id = ${orgId} AND c.status != 'pending'`
-      : sql`WHERE c.status != 'pending'`;
+    let query: string;
+    let params: any[];
 
-    const companies = await sql`
-      SELECT
-        c.*,
-        mp.current_price,
-        mp.prev_price,
-        mp.high_price,
-        mp.low_price,
-        mp.volume,
-        CASE
-          WHEN mp.prev_price > 0
-          THEN ROUND(((mp.current_price - mp.prev_price) / mp.prev_price * 100)::numeric, 2)
-          ELSE 0
-        END as change_rate,
-        u.username as ceo_username,
-        CONCAT(u.last_name, u.first_name) as ceo_name,
-        at.symbol as coin_symbol,
-        at.name as coin_name,
-        (SELECT COUNT(*) FROM investment.ownership WHERE company_id = c.id AND quantity > 0) as shareholder_count,
-        (SELECT COALESCE(SUM(quantity * mp2.current_price), 0)
-         FROM investment.ownership o2
-         JOIN investment.market_price mp2 ON mp2.company_id = o2.company_id
-         WHERE o2.company_id = c.id) as market_cap
-      FROM investment.companies c
-      LEFT JOIN investment.market_price mp ON c.id = mp.company_id
-      LEFT JOIN public.users u ON c.ceo_user_id::text = u.id
-      LEFT JOIN economy.asset_types at ON c.asset_type_id = at.id
-      ${orgFilter}
-      ORDER BY
-        CASE c.status WHEN 'listed' THEN 0 WHEN 'suspended' THEN 1 ELSE 2 END,
-        c.listed_at DESC NULLS LAST
-    `;
-    res.json(companies);
+    if (orgId) {
+      query = `
+        SELECT c.*, mp.current_price, mp.prev_price, mp.high_price, mp.low_price, mp.volume,
+          CASE WHEN mp.prev_price > 0
+            THEN ROUND(((mp.current_price - mp.prev_price) / mp.prev_price * 100)::numeric, 2)
+            ELSE 0 END as change_rate,
+          u.username as ceo_username,
+          CONCAT(u.last_name, u.first_name) as ceo_name,
+          at.symbol as coin_symbol, at.name as coin_name,
+          (SELECT COUNT(*) FROM investment.ownership WHERE company_id = c.id AND quantity > 0) as shareholder_count,
+          (SELECT COALESCE(SUM(quantity * mp2.current_price), 0)
+           FROM investment.ownership o2
+           JOIN investment.market_price mp2 ON mp2.company_id = o2.company_id
+           WHERE o2.company_id = c.id) as market_cap
+        FROM investment.companies c
+        LEFT JOIN investment.market_price mp ON c.id = mp.company_id
+        LEFT JOIN public.users u ON c.ceo_user_id::text = u.id
+        LEFT JOIN economy.asset_types at ON c.asset_type_id = at.id
+        WHERE c.organization_id = $1 AND c.status != 'pending'
+        ORDER BY CASE c.status WHEN 'listed' THEN 0 WHEN 'suspended' THEN 1 ELSE 2 END,
+          c.listed_at DESC NULLS LAST
+      `;
+      params = [orgId];
+    } else {
+      query = `
+        SELECT c.*, mp.current_price, mp.prev_price, mp.high_price, mp.low_price, mp.volume,
+          CASE WHEN mp.prev_price > 0
+            THEN ROUND(((mp.current_price - mp.prev_price) / mp.prev_price * 100)::numeric, 2)
+            ELSE 0 END as change_rate,
+          u.username as ceo_username,
+          CONCAT(u.last_name, u.first_name) as ceo_name,
+          at.symbol as coin_symbol, at.name as coin_name,
+          (SELECT COUNT(*) FROM investment.ownership WHERE company_id = c.id AND quantity > 0) as shareholder_count,
+          (SELECT COALESCE(SUM(quantity * mp2.current_price), 0)
+           FROM investment.ownership o2
+           JOIN investment.market_price mp2 ON mp2.company_id = o2.company_id
+           WHERE o2.company_id = c.id) as market_cap
+        FROM investment.companies c
+        LEFT JOIN investment.market_price mp ON c.id = mp.company_id
+        LEFT JOIN public.users u ON c.ceo_user_id::text = u.id
+        LEFT JOIN economy.asset_types at ON c.asset_type_id = at.id
+        WHERE c.status != 'pending'
+        ORDER BY CASE c.status WHEN 'listed' THEN 0 WHEN 'suspended' THEN 1 ELSE 2 END,
+          c.listed_at DESC NULLS LAST
+      `;
+      params = [];
+    }
+    const result = await pool.query(query, params);
+    res.json(result.rows);
   } catch (e: any) {
     res.status(500).json({ error: e.message });
   }
