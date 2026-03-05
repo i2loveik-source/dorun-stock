@@ -147,13 +147,15 @@ export default function Market({ onSelect, onLogout }: { onSelect: (id: number) 
 
         {/* 프로필 드롭다운 */}
         {showProfile && (
+          <>
+          <div className="fixed inset-0 z-40" onClick={() => setShowProfile(false)} />
           <div className="absolute top-full right-4 mt-1 bg-white border border-gray-200 rounded-2xl shadow-lg p-3 z-50 min-w-48">
             <div className="pb-2 mb-2 border-b border-gray-100">
               <p className="text-sm font-black text-gray-800">{user?.fullName || user?.username}</p>
               <p className="text-xs text-gray-400">@{user?.username}</p>
               {user?.orgName && <p className="text-xs text-indigo-500 mt-0.5">🏫 {user.orgName}</p>}
             </div>
-            <button onClick={(e) => { e.stopPropagation(); setShowProfile(false); setTimeout(() => setShowIpo(true), 50); }}
+            <button onClick={(e) => { e.stopPropagation(); setShowIpo(true); setShowProfile(false); }}
               className="w-full text-left text-sm py-1.5 px-2 rounded-xl hover:bg-gray-50 text-gray-700">
               🏢 IPO 신청
             </button>
@@ -162,13 +164,9 @@ export default function Market({ onSelect, onLogout }: { onSelect: (id: number) 
               🚪 로그아웃
             </button>
           </div>
+          </>
         )}
       </div>
-
-      {/* 프로필 드롭다운 바깥 클릭 닫기 */}
-      {showProfile && (
-        <div className="fixed inset-0 z-40" onClick={() => setShowProfile(false)} />
-      )}
 
       {/* IPO 성공 메시지 */}
       {ipoSuccess && (
