@@ -51,6 +51,7 @@ async function getUserById(userId: string) {
 
 function resolveRole(u: any): string {
   if (u.coin_role === "platform_admin") return "platform_admin";
+  if (u.coin_role === "org_issuer") return "관리자";
   if (u.org_role === "admin") return "관리자";
   return u.org_role || "member";
 }
