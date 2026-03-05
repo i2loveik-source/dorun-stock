@@ -85,8 +85,19 @@ router.get("/portfolio/company/:companyId", requireAuth, async (req: Request, re
       walletBalance = await getWalletBalance(`company:${companyId}`, company.asset_type_id);
     }
 
+    // 내 코인 잔액 조회
+    const myWalletRes = company ? await sql`
+      SELECT COALESCE(balance, 0) as balance
+      FROM economy.wallets
+      WHERE user_id = ${user.userId} AND asset_type_id = ${company.asset_type_id}
+      LIMIT 1
+    ` : [];
+    const myBalance = parseFloat(myWalletRes[0]?.balance || "0");
+
     res.json({
       quantity: ownership[0]?.quantity || 0,
+      myBalance,
+      coinSymbol: company?.symbol,
       companyWallet: {
         balance: walletBalance.balance,
         symbol: company?.symbol,

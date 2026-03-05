@@ -49,7 +49,7 @@ async function matchOrder(params: {
     // 2. 매도 주문 시 보유 주식 확인
     if (orderType === "SELL") {
       const ownerRes = await client.query(
-        `SELECT quantity FROM investment.ownership WHERE user_id=$1 AND company_id=$2`,
+        `SELECT quantity FROM investment.ownership WHERE user_id::text=$1 AND company_id=$2`,
         [userId, companyId]
       );
       const owned = ownerRes.rows[0]?.quantity || 0;
@@ -57,7 +57,7 @@ async function matchOrder(params: {
       const pendingRes = await client.query(
         `SELECT COALESCE(SUM(remaining_qty), 0) as pending
          FROM investment.orders
-         WHERE user_id=$1 AND company_id=$2 AND order_type='SELL' AND status IN ('OPEN','PARTIAL')`,
+         WHERE user_id::text=$1 AND company_id=$2 AND order_type='SELL' AND status IN ('OPEN','PARTIAL')`,
         [userId, companyId]
       );
       const pendingQty = parseInt(pendingRes.rows[0]?.pending || "0");
@@ -82,7 +82,7 @@ async function matchOrder(params: {
     // 4. 주문 등록
     const orderRes = await client.query(
       `INSERT INTO investment.orders (user_id, company_id, order_type, price, quantity, remaining_qty)
-       VALUES ($1, $2, $3, $4, $5, $5) RETURNING *`,
+       VALUES ($1::uuid, $2, $3, $4, $5, $5) RETURNING *`,
       [userId, companyId, orderType, price, quantity]
     );
     const myOrderId = orderRes.rows[0].id;
@@ -93,7 +93,7 @@ async function matchOrder(params: {
       `SELECT * FROM investment.orders
        WHERE company_id=$1 AND order_type=$2 AND status IN ('OPEN','PARTIAL')
          AND price ${orderType === "BUY" ? "<=" : ">="} $3
-         AND user_id != $4
+         AND user_id::text != $4
        ORDER BY price ${orderType === "BUY" ? "ASC" : "DESC"}, created_at ASC`,
       [companyId, oppositeType, price, userId]
     );
@@ -131,13 +131,13 @@ async function matchOrder(params: {
       // 판매자 차감
       await client.query(
         `UPDATE investment.ownership SET quantity = quantity - $1
-         WHERE user_id=$2 AND company_id=$3`,
+         WHERE user_id::text=$2 AND company_id=$3`,
         [matchQty, sellerId, companyId]
       );
       // 구매자 증가
       await client.query(
         `INSERT INTO investment.ownership (user_id, company_id, quantity)
-         VALUES ($1, $2, $3)
+         VALUES ($1::uuid, $2, $3)
          ON CONFLICT (user_id, company_id) DO UPDATE SET quantity = investment.ownership.quantity + $3`,
         [buyerId, companyId, matchQty]
       );
