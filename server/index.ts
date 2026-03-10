@@ -25,7 +25,7 @@ const PORT = process.env.PORT || 4400;
 initSocket(server);
 
 // 미들웨어
-app.use(cors({ origin: "*", credentials: true }));
+app.use(cors({ origin: true, credentials: true }));
 app.use(express.json({ limit: "1mb" }));
 
 app.use((req, _res, next) => {

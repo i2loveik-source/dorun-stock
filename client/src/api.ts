@@ -27,6 +27,7 @@ export async function api(path: string, options: RequestInit = {}): Promise<any>
   const token = getToken();
   const res = await fetch(`${API_BASE}${path}`, {
     ...options,
+    credentials: "include",
     headers: {
       "Content-Type": "application/json",
       ...(token ? { Authorization: `Bearer ${token}` } : {}),

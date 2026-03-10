@@ -32,17 +32,27 @@ function IpoApplyModal({ onClose, onDone }: { onClose: () => void; onDone: () =>
   }, []);
 
   const handleLogoUpload = async (file: File) => {
-    setLogoFile(file);
-    setLogoPreview(URL.createObjectURL(file));
-    const fd = new FormData();
-    fd.append("logo", file);
-    const res = await fetch("/api/companies/upload-logo", {
-      headers: { Authorization: `Bearer ${getToken()}` },
-      method: "POST",
-      body: fd,
-    });
-    const d = await res.json();
-    if (d.url) setForm(p => ({ ...p, logoUrl: d.url }));
+    try {
+      setLogoFile(file);
+      setLogoPreview(URL.createObjectURL(file));
+      const fd = new FormData();
+      fd.append("logo", file);
+      const token = getToken();
+      const res = await fetch("/api/companies/upload-logo", {
+        credentials: "include",
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        method: "POST",
+        body: fd,
+      });
+      const d = await res.json();
+      if (!res.ok) {
+        setMsg(`❌ ${d?.error || "업로드 실패"}`);
+        return;
+      }
+      if (d.url) setForm(p => ({ ...p, logoUrl: d.url }));
+    } catch {
+      setMsg("❌ 업로드 실패");
+    }
   };
 
   const submit = async () => {
