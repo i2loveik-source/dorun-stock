@@ -95,18 +95,24 @@ app.use("/api", financialRoutes);
 app.use("/api", watchlistRoutes);
 
 // 프로덕션: 클라이언트 정적 파일
-// __dirname = dist/ (tsc 빌드 후), client/dist = ../client/dist
-const clientDist = path.join(__dirname, "../client/dist");
-if (fs.existsSync(clientDist)) {
-  app.use("/uploads", express.static(path.join(clientDist, "uploads")));
+// __dirname = dist/ (tsc 빌드 후)
+// 빌드: (cd client && vite build) → client/dist/
+// 서버 실행: node dist/index.js → __dirname = dist/ → ../client/dist = client/dist/
+const clientDist = path.resolve(__dirname, "../client/dist");
+const indexHtml = path.join(clientDist, "index.html");
+console.log(`[Stock] client dist path: ${clientDist}`);
+console.log(`[Stock] index.html exists: ${fs.existsSync(indexHtml)}`);
+
+if (fs.existsSync(indexHtml)) {
   app.use(express.static(clientDist));
-  app.get("/{*path}", (_req, res) => {
-    res.sendFile(path.join(clientDist, "index.html"));
+  // Express 4 호환 catch-all (SPA 라우팅)
+  app.get("*", (_req, res) => {
+    res.sendFile(indexHtml);
   });
 } else {
-  console.warn("⚠️ client/dist 없음 — 프론트 빌드 필요");
-  app.get("/{*path}", (_req, res) => {
-    res.send("<h1>두런허브스탁 서버 실행 중</h1><p>프론트 빌드 대기 중...</p>");
+  console.warn("⚠️ client/dist/index.html 없음 — 프론트 빌드 필요");
+  app.get("*", (_req, res) => {
+    res.status(503).send("<h1>두런허브스탁</h1><p>서버 준비 중입니다. 잠시 후 다시 시도하세요.</p>");
   });
 }
 
